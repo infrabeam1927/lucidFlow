@@ -1,6 +1,7 @@
 const API_BASE_URL = "http://localhost:5000/api";
 const state = {
   categories: [],
+  months: [],
   month: null,
 };
 
@@ -25,12 +26,14 @@ const selectors = {
   sankeyChart: document.getElementById("sankey-chart"),
   sankeyPanel: document.getElementById("sankey-panel"),
   sankeyJump: document.getElementById("sankey-jump"),
+  yearlyTable: document.getElementById("yearly-table"),
 };
 
 const sankeyPalette = {
   income: "#6cf7c5",
   expense: "#ff5b7f",
   investment: "#f7c56c",
+  withdrawal: "#c5a6ff",
   savings: "#2fb5ff",
   pool: "#6cf7c5",
   shortfall: "#ff8c5b",
@@ -63,6 +66,46 @@ function showToast(message, variant = "info") {
   selectors.toast.classList.toggle("error", variant === "error");
   selectors.toast.classList.add("show");
   setTimeout(() => selectors.toast.classList.remove("show"), 2600);
+}
+
+function formatMonthLabel(token) {
+  const [year, month] = token.split("-").map(Number);
+  if (!year || !month) {
+    return token;
+  }
+  return new Date(year, month - 1).toLocaleDateString("en-US", {
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function populateMonthDropdowns() {
+  if (!selectors.monthPicker || !selectors.sankeyMonth) {
+    return;
+  }
+  const sankeyValue = selectors.sankeyMonth.value;
+  const baseOption = '<option value="">All months</option>';
+  const monthOptions = state.months
+    .map((token) => `<option value="${token}">${formatMonthLabel(token)}</option>`)
+    .join("\n");
+  const combined = [baseOption, monthOptions].join("\n");
+  selectors.monthPicker.innerHTML = combined;
+  selectors.sankeyMonth.innerHTML = combined;
+  selectors.monthPicker.value = state.month || "";
+  if (sankeyValue && state.months.includes(sankeyValue)) {
+    selectors.sankeyMonth.value = sankeyValue;
+  } else {
+    selectors.sankeyMonth.value = "";
+  }
+}
+
+async function fetchMonths() {
+  const payload = await api("/months");
+  state.months = payload.months || [];
+  if (state.month && !state.months.includes(state.month)) {
+    state.months.unshift(state.month);
+  }
+  populateMonthDropdowns();
 }
 
 async function api(path, options = {}) {
@@ -133,14 +176,15 @@ function renderTransactions(list) {
   if (!list.length) {
     selectors.transactionTable.innerHTML = `
       <tr>
-        <td colspan="5" class="muted">No transactions found</td>
+        <td colspan="6" class="muted">No transactions found</td>
       </tr>
     `;
     return;
   }
+  const inflowTypes = new Set(["income", "withdrawal"]);
   selectors.transactionTable.innerHTML = list
     .map((transaction) => {
-      const sign = transaction.type === "income" ? "+" : "-";
+      const sign = inflowTypes.has(transaction.type) ? "+" : "-";
       return `
         <tr data-id="${transaction.id}">
           <td>${transaction.occurred_on}</td>
@@ -164,6 +208,38 @@ async function fetchSummary() {
   selectors.savings.textContent = currency(summary.net);
   renderBreakdown(summary.by_category);
   renderGoals(summary.goals);
+}
+
+async function fetchYearlySummary() {
+  const data = await api("/yearly-summary");
+  renderYearlySummary(data);
+}
+
+function renderYearlySummary(rows) {
+  if (!selectors.yearlyTable) {
+    return;
+  }
+  if (!rows.length) {
+    selectors.yearlyTable.innerHTML = `
+      <tr>
+        <td colspan="5" class="muted">No transactions yet</td>
+      </tr>
+    `;
+    return;
+  }
+  selectors.yearlyTable.innerHTML = rows
+    .map(
+      (row) => `
+        <tr>
+          <td>${row.year}</td>
+          <td>${currency(row.income)}</td>
+          <td>${currency(row.expense)}</td>
+          <td>${currency(row.investment)}</td>
+          <td>${currency(row.net)}</td>
+        </tr>
+      `
+    )
+    .join("\n");
 }
 
 function renderBreakdown(breakdown) {
@@ -283,12 +359,6 @@ function setupSankey() {
   }
 
   selectors.sankeyButton.addEventListener("click", buildSankey);
-  selectors.sankeyMonth.addEventListener("keydown", (event) => {
-    if (event.key === "Enter") {
-      event.preventDefault();
-      buildSankey();
-    }
-  });
 
   if (selectors.sankeyJump && selectors.sankeyPanel) {
     selectors.sankeyJump.addEventListener("click", () => {
@@ -376,6 +446,8 @@ function attachEventListeners() {
 function refreshData() {
   fetchSummary().catch((error) => showToast(error.message, "error"));
   fetchTransactions().catch((error) => showToast(error.message, "error"));
+  fetchYearlySummary().catch((error) => showToast(error.message, "error"));
+  fetchMonths().catch((error) => showToast(error.message, "error"));
 }
 
 function init() {

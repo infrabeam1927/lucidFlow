@@ -13,7 +13,7 @@ class Category(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(80), nullable=False, unique=True)
-    type = db.Column(db.String(20), nullable=False)  # income or expense
+    type = db.Column(db.String(20), nullable=False)  # income, expense, investment, withdrawal
 
     transactions = db.relationship("Transaction", backref="category", lazy=True)
     goals = db.relationship("BudgetGoal", backref="category", lazy=True)

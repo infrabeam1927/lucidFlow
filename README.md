@@ -3,11 +3,12 @@
 > A lightweight, open-source personal budgeting stack with a Flask API, SQLite storage, and a static HTML/CSS/JS dashboard (no framework build step required).
 
 ## Feature Highlights
-- **Unified dashboard** with income, expenses, investments, and inferred savings summary cards.
-- **Dynamic forms** for transactions, categories (income/expense/investment), and expense goals with automatic resets.
+- **Unified dashboard** with income, expenses, net investments, and inferred savings summary cards.
+- **Dynamic forms** for transactions, categories (income/expense/investment/withdrawal), and expense goals with automatic resets.
 - **Goal tracking** that visualizes progress toward monthly caps for every expense category.
 - **Plotly-powered Sankey** diagram embedded on the main page showing how each income stream fans out to expenses, investments, and savings/shortfalls.
 - **Month filters** shared across summaries, tables, and the Sankey so you can focus on a single period.
+- **Built-in Investment Withdrawal category** (type `withdrawal`) so you can tag cash coming back from invested funds without extra setup.
 
 ## Tech Stack
 | Layer | Details |
@@ -44,10 +45,10 @@ Then edit `API_BASE_URL` in `frontend/app.js` to point at your API host (default
 | Endpoint | Method(s) | Notes |
 | --- | --- | --- |
 | `/api/health` | GET | Basic heartbeat with timestamp |
-| `/api/categories` | GET, POST | Manage income, expense, and investment categories (unique names enforced) |
+| `/api/categories` | GET, POST | Manage income, expense, investment, and withdrawal categories (unique names enforced) |
 | `/api/transactions` | GET, POST, DELETE | CRUD for transactions (positive amounts only) with optional `month=YYYY-MM` filter |
 | `/api/goals` | GET, POST, PUT, DELETE | Monthly limits attached to **expense** categories only |
-| `/api/summary` | GET | Aggregated totals (income/expense/investment), inferred savings, category totals, and goal progress. Accepts `month=YYYY-MM`. |
+| `/api/summary` | GET | Aggregated totals (income/expense/net investment/withdrawal), inferred savings, category totals, and goal progress. Accepts `month=YYYY-MM`. |
 | `/api/sankey` | GET | Returns nodes/links for the Plotly Sankey diagram. Accepts `month=YYYY-MM`. |
 
 All responses are JSON. Errors return `{ "error": "message" }` plus an HTTP status code (400/404/409, etc.).
@@ -56,14 +57,16 @@ All responses are JSON. Errors return `{ "error": "message" }` plus an HTTP stat
 
 | Table | Key Fields | Notes |
 | --- | --- | --- |
-| `categories` | `id`, `name`, `type` (`income`\|`expense`\|`investment`) | Drives both transactions and goals |
+| `categories` | `id`, `name`, `type` (`income`\|`expense`\|`investment`\|`withdrawal`) | Drives both transactions and goals |
 | `transactions` | `id`, `uid`, `description`, `amount`, `occurred_on`, `category_id` | Amounts must be positive; sign is inferred from category type. `uid` is a UUID exposed to clients. |
 | `budget_goals` | `id`, `monthly_limit`, `category_id` | One goal per expense category enforced by a uniqueness constraint |
 
 ## Investments & Sankey Flow
 
-- Creating a category with `type = investment` treats the outflow as an asset allocation instead of an expense. These amounts show up in their own summary card and Sankey branch but are excluded from expense goals.
-- Savings = Income − Expenses − Investments. When positive, the Sankey adds a `Net Savings` sink; when negative, a `Shortfall` node points back into the pool so you can diagnose overspending quickly.
+- Creating a category with `type = investment` treats the outflow as an asset allocation instead of an expense. These amounts show up in their own summary card and Sankey branch but are excluded from expense goals. The investment card always displays **net contributions** (investments − withdrawals) so you can see how much cash stayed deployed.
+- Creating a category with `type = withdrawal` captures cash returning from investments. Withdrawals flow into the Sankey pool the same way income does and still appear in transaction/filter views.
+- The backend seeds an **Investment Withdrawal** category (type `withdrawal`) automatically; use it to represent money moving from investments back into your cash pool.
+- Savings = Income − Expenses − Net Investments, where Net Investments = Investments − Withdrawals. When positive, the Sankey adds a `Net Savings` sink; when negative, a `Shortfall` node points back into the pool so you can diagnose overspending quickly.
 - The Sankey always aggregates categories by type:
   - **Income sources → Income Pool**
   - **Income Pool → Expense categories / Investment categories**

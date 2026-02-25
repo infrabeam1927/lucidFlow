@@ -1,11 +1,12 @@
 from datetime import date, datetime
 from flask import Blueprint, jsonify, request
 from sqlalchemy import func
+from collections import defaultdict
 from .database import db
 from .models import BudgetGoal, Category, Transaction
 
 
-ALLOWED_CATEGORY_TYPES = {"income", "expense", "investment"}
+ALLOWED_CATEGORY_TYPES = {"income", "expense", "investment", "withdrawal"}
 
 api_bp = Blueprint("api", __name__)
 
@@ -30,6 +31,14 @@ def _apply_month_filter(query, column, month_token):
     if start and end:
         query = query.filter(column >= start, column < end)
     return query
+
+
+def _month_token(value: date) -> str:
+    return value.strftime("%Y-%m")
+
+
+def _year_bucket(value: date) -> int:
+    return value.year
 
 
 def _error(message, status_code=400):
@@ -197,7 +206,7 @@ def monthly_summary():
         except ValueError as err:
             return _error(str(err))
 
-    totals = {"income": 0.0, "expense": 0.0, "investment": 0.0}
+    totals = {"income": 0.0, "expense": 0.0, "investment": 0.0, "withdrawal": 0.0}
     category_totals = {}
 
     for transaction, category in query.all():
@@ -207,7 +216,14 @@ def monthly_summary():
         category_totals.setdefault(category.name, 0.0)
         category_totals[category.name] += transaction.amount
 
-    net = totals.get("income", 0.0) - totals.get("expense", 0.0) - totals.get("investment", 0.0)
+    income_total = totals.get("income", 0.0)
+    expense_total = totals.get("expense", 0.0)
+    investment_total = totals.get("investment", 0.0)
+    withdrawal_total = totals.get("withdrawal", 0.0)
+    net_investment = investment_total - withdrawal_total
+    totals["investment"] = net_investment
+
+    net = income_total - expense_total - net_investment
 
     # Progress for expense goals in the selected window (or lifetime if none)
     def _goal_spent(goal: BudgetGoal):
@@ -238,6 +254,13 @@ def monthly_summary():
     return jsonify(response)
 
 
+@api_bp.get("/months")
+def list_months():
+    date_rows = db.session.query(Transaction.occurred_on).distinct().all()
+    tokens = sorted({_month_token(row[0]) for row in date_rows if row[0]}, reverse=True)
+    return jsonify({"months": tokens})
+
+
 @api_bp.get("/sankey")
 def sankey_snapshot():
     month_token = request.args.get("month")
@@ -262,10 +285,11 @@ def sankey_snapshot():
         return jsonify({"nodes": [], "links": []})
 
     income_rows = [row for row in category_totals if row.type == "income" and row.total]
+    withdrawal_rows = [row for row in category_totals if row.type == "withdrawal" and row.total]
     expense_rows = [row for row in category_totals if row.type == "expense" and row.total]
     investment_rows = [row for row in category_totals if row.type == "investment" and row.total]
 
-    if not income_rows and not expense_rows and not investment_rows:
+    if not income_rows and not withdrawal_rows and not expense_rows and not investment_rows:
         return jsonify({"nodes": [], "links": []})
 
     nodes = []
@@ -289,6 +313,15 @@ def sankey_snapshot():
         total_income += value
         links.append({"source": cat_id, "target": income_pool_id, "value": value})
 
+    total_withdrawal = 0.0
+    for row in withdrawal_rows:
+        cat_id = _node_id(row.name, "withdrawal")
+        value = round(float(row.total or 0.0), 2)
+        if value <= 0:
+            continue
+        total_withdrawal += value
+        links.append({"source": cat_id, "target": income_pool_id, "value": value})
+
     total_expense = 0.0
     for row in expense_rows:
         cat_id = _node_id(row.name, "expense")
@@ -307,7 +340,7 @@ def sankey_snapshot():
         total_investment += value
         links.append({"source": income_pool_id, "target": cat_id, "value": value})
 
-    net = round(total_income - total_expense - total_investment, 2)
+    net = round(total_income + total_withdrawal - total_expense - total_investment, 2)
     if net > 0:
         savings_id = _node_id("Net Savings", "savings")
         links.append({"source": income_pool_id, "target": savings_id, "value": net})
@@ -316,3 +349,37 @@ def sankey_snapshot():
         links.append({"source": gap_id, "target": income_pool_id, "value": abs(net)})
 
     return jsonify({"nodes": nodes, "links": links})
+
+
+@api_bp.get("/yearly-summary")
+def yearly_summary():
+    rows = db.session.query(Transaction, Category).join(Category).all()
+    if not rows:
+        return jsonify([])
+
+    buckets = defaultdict(lambda: {"income": 0.0, "expense": 0.0, "investment": 0.0, "withdrawal": 0.0})
+    for transaction, category in rows:
+        bucket = buckets[_year_bucket(transaction.occurred_on)]
+        bucket.setdefault(category.type, 0.0)
+        bucket[category.type] += transaction.amount
+
+    response = []
+    for year in sorted(buckets.keys(), reverse=True):
+        data = buckets[year]
+        income = data.get("income", 0.0)
+        withdrawal = data.get("withdrawal", 0.0)
+        expense = data.get("expense", 0.0)
+        investment_total = data.get("investment", 0.0)
+        investment_net = investment_total - withdrawal
+        net = income - expense - investment_net
+        response.append(
+            {
+                "year": year,
+                "income": round(income, 2),
+                "expense": round(expense, 2),
+                "investment": round(investment_net, 2),
+                "net": round(net, 2),
+            }
+        )
+
+    return jsonify(response)

@@ -59,6 +59,7 @@ body {
 }
 
 .hero-controls input,
+.hero-controls select,
 .hero-controls button,
 .hero-controls .ghost-button {
   width: 160px;
@@ -164,6 +165,10 @@ body {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: 20px;
+}
+
+.transactions-panel {
+  grid-column: 1 / -1;
 }
 
 .panel-header {

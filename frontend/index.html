@@ -26,7 +26,7 @@
         </div>
         <div class="hero-controls">
           <label for="month-filter">Focus month</label>
-          <input type="month" id="month-filter" />
+          <select id="month-filter"></select>
           <button id="clear-month" type="button">Show all</button>
           <button id="sankey-jump" class="ghost-button" type="button">Cash Flow Sankey</button>
         </div>
@@ -42,7 +42,7 @@
           <strong id="summary-expense">$0</strong>
         </article>
         <article class="summary-card">
-          <p>Investments</p>
+          <p>Investments (net)</p>
           <strong id="summary-investment">$0</strong>
         </article>
         <article class="summary-card net">
@@ -70,7 +70,7 @@
         <div class="filter-row">
           <label>
             Month (optional)
-            <input type="month" id="sankey-month" />
+            <select id="sankey-month"></select>
           </label>
         </div>
         <p class="chart-status" id="sankey-status">
@@ -79,8 +79,28 @@
         <div id="sankey-chart" class="chart-surface"></div>
       </section>
 
+      <section class="panel" id="yearly-panel">
+        <div class="panel-header">
+          <h2>Yearly Spend Overview</h2>
+        </div>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Year</th>
+                <th>Income</th>
+                <th>Expenses</th>
+                <th>Investments (net)</th>
+                <th>Savings</th>
+              </tr>
+            </thead>
+            <tbody id="yearly-table"></tbody>
+          </table>
+        </div>
+      </section>
+
       <section class="data-grid">
-        <article class="panel">
+        <article class="panel transactions-panel">
           <div class="panel-header">
             <h2>Transactions</h2>
             <button id="refresh-data" type="button">Refresh</button>
@@ -139,6 +159,7 @@
                 <option value="income">Income</option>
                 <option value="expense">Expense</option>
                 <option value="investment">Investment</option>
+                <option value="withdrawal">Investment withdrawal</option>
               </select>
             </label>
             <button type="submit">Create Category</button>
