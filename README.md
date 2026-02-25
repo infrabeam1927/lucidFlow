@@ -17,6 +17,11 @@
 | Frontend | Plain HTML, CSS, and vanilla JS + Plotly CDN (no bundler needed) |
 | Data | SQLite database in `backend/instance/budget.db` (auto-created) |
 
+## UI Preview
+![LucidFlow dashboard preview](Screenshot%202026-02-25%20at%2012-33-26%20LucidFlow%20Budget.png)
+
+> The dashboard highlights month filters, summary cards, category tables, and the Plotly Sankey diagram in a single view.
+
 ## Getting Started
 
 ### 1. Backend API
