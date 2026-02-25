@@ -1,6 +1,11 @@
 from datetime import date
+from uuid import uuid4
 from sqlalchemy import CheckConstraint, UniqueConstraint
 from .database import db
+
+
+def generate_transaction_uid():
+    return str(uuid4())
 
 
 class Category(db.Model):
@@ -21,6 +26,7 @@ class Transaction(db.Model):
     __tablename__ = "transactions"
 
     id = db.Column(db.Integer, primary_key=True)
+    uid = db.Column(db.String(36), unique=True, nullable=False, default=generate_transaction_uid)
     description = db.Column(db.String(120), nullable=False)
     amount = db.Column(db.Float, nullable=False)
     occurred_on = db.Column(db.Date, nullable=False, default=date.today)
@@ -30,6 +36,7 @@ class Transaction(db.Model):
 
     def to_dict(self):
         return {
+            "uid": self.uid,
             "id": self.id,
             "description": self.description,
             "amount": self.amount,

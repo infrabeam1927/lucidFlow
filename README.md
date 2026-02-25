@@ -57,7 +57,7 @@ All responses are JSON. Errors return `{ "error": "message" }` plus an HTTP stat
 | Table | Key Fields | Notes |
 | --- | --- | --- |
 | `categories` | `id`, `name`, `type` (`income`\|`expense`\|`investment`) | Drives both transactions and goals |
-| `transactions` | `id`, `description`, `amount`, `occurred_on`, `category_id` | Amounts must be positive; sign is inferred from category type |
+| `transactions` | `id`, `uid`, `description`, `amount`, `occurred_on`, `category_id` | Amounts must be positive; sign is inferred from category type. `uid` is a UUID exposed to clients. |
 | `budget_goals` | `id`, `monthly_limit`, `category_id` | One goal per expense category enforced by a uniqueness constraint |
 
 ## Investments & Sankey Flow

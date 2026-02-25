@@ -144,6 +144,7 @@ function renderTransactions(list) {
       return `
         <tr data-id="${transaction.id}">
           <td>${transaction.occurred_on}</td>
+          <td class="mono">${transaction.uid}</td>
           <td>${transaction.description}</td>
           <td>${transaction.category_name}</td>
           <td>${sign}${currency(transaction.amount)}</td>
