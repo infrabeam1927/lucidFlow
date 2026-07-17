@@ -1,77 +1,83 @@
+from flask_migrate import stamp, upgrade
+from sqlalchemy import inspect, text
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import text
-from sqlalchemy.exc import OperationalError
 
 
 db = SQLAlchemy()
 
+# The revision generated to represent the final state of the old hand-rolled
+# ALTER TABLE migrations. A pre-Alembic database that already matches this
+# schema is stamped at this specific revision -- never at "head" -- so that a
+# later migration (once one exists) still runs against it instead of being
+# silently skipped.
+BASELINE_REVISION = "18318fd43ddb"
+
 
 def init_db():
-    db.create_all()
-    _ensure_transaction_uid_column()
-    _ensure_amount_cents_column()
-    _ensure_monthly_limit_cents_column()
-    _backfill_transaction_uids()
+    inspector = inspect(db.engine)
+    existing_tables = set(inspector.get_table_names())
+
+    if "alembic_version" not in existing_tables and "categories" in existing_tables:
+        _adopt_pre_alembic_database(inspector)
+
+    upgrade()
     _ensure_investment_withdraw_category()
 
 
-def _ensure_transaction_uid_column():
+def _adopt_pre_alembic_database(inspector):
+    """Stamp a pre-Alembic database as already being at the baseline revision.
+
+    Older LucidFlow versions migrated the schema by hand (ALTER TABLE calls in
+    this module). The baseline Alembic revision reflects the final state of
+    those hand-rolled steps, so an existing database that already went
+    through them can be adopted in place rather than re-running CREATE TABLE
+    against tables that already exist.
+    """
+    required_tables = {"transactions", "budget_goals"}
+    existing_tables = set(inspector.get_table_names())
+    if not required_tables.issubset(existing_tables):
+        raise RuntimeError(
+            "Found a pre-Alembic database missing the 'transactions' and/or 'budget_goals' "
+            "tables entirely. This doesn't look like a database LucidFlow has ever fully "
+            "initialized; delete it and let this version create it fresh, or restore a "
+            "working backup."
+        )
+
+    transaction_columns = {col["name"] for col in inspector.get_columns("transactions")}
+    goal_columns = {col["name"] for col in inspector.get_columns("budget_goals")}
+    expected_transaction_columns = {"uid", "amount_cents"}
+    expected_goal_columns = {"monthly_limit_cents"}
+
+    if not expected_transaction_columns.issubset(transaction_columns) or not expected_goal_columns.issubset(
+        goal_columns
+    ):
+        raise RuntimeError(
+            "Found a pre-Alembic database on an older schema than this version expects "
+            "(missing uid/amount_cents/monthly_limit_cents columns). Upgrade through a "
+            "previous LucidFlow release first so those hand-rolled migrations can run, "
+            "then upgrade to this version."
+        )
+
     with db.engine.connect() as conn:
-        column_rows = conn.execute(text("PRAGMA table_info(transactions)")).fetchall()
-        has_uid = any(row[1] == "uid" for row in column_rows)
-        if not has_uid:
-            conn.execute(text("ALTER TABLE transactions ADD COLUMN uid TEXT"))
-        conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_transactions_uid ON transactions(uid)"))
+        incomplete_transactions = conn.execute(
+            text(
+                "SELECT COUNT(*) FROM transactions WHERE uid IS NULL OR uid = '' OR amount_cents IS NULL"
+            )
+        ).scalar()
+        incomplete_goals = conn.execute(
+            text("SELECT COUNT(*) FROM budget_goals WHERE monthly_limit_cents IS NULL")
+        ).scalar()
 
+    if incomplete_transactions or incomplete_goals:
+        raise RuntimeError(
+            "Found a pre-Alembic database with the expected columns present but not fully "
+            "backfilled (some transactions are missing uid/amount_cents, or some goals are "
+            "missing monthly_limit_cents) -- it looks like a previous migration was "
+            "interrupted partway through. Upgrade through a previous LucidFlow release first "
+            "so those hand-rolled migrations can finish, then upgrade to this version."
+        )
 
-def _backfill_transaction_uids():
-    from uuid import uuid4
-    from .models import Transaction
-
-    updated = False
-    for transaction in Transaction.query.filter((Transaction.uid.is_(None)) | (Transaction.uid == "")):
-        transaction.uid = str(uuid4())
-        updated = True
-    if updated:
-        db.session.commit()
-
-
-def _ensure_amount_cents_column():
-    """Migrate the legacy float `amount` column (dollars) to integer `amount_cents`."""
-    with db.engine.connect() as conn:
-        column_rows = conn.execute(text("PRAGMA table_info(transactions)")).fetchall()
-        column_names = {row[1] for row in column_rows}
-        if "amount_cents" not in column_names:
-            conn.execute(text("ALTER TABLE transactions ADD COLUMN amount_cents INTEGER"))
-            if "amount" in column_names:
-                conn.execute(text("UPDATE transactions SET amount_cents = CAST(ROUND(amount * 100) AS INTEGER)"))
-            conn.commit()
-        if "amount" in column_names:
-            try:
-                conn.execute(text("ALTER TABLE transactions DROP COLUMN amount"))
-                conn.commit()
-            except OperationalError:
-                pass  # older SQLite versions don't support DROP COLUMN; harmless leftover
-
-
-def _ensure_monthly_limit_cents_column():
-    """Migrate the legacy float `monthly_limit` column (dollars) to integer `monthly_limit_cents`."""
-    with db.engine.connect() as conn:
-        column_rows = conn.execute(text("PRAGMA table_info(budget_goals)")).fetchall()
-        column_names = {row[1] for row in column_rows}
-        if "monthly_limit_cents" not in column_names:
-            conn.execute(text("ALTER TABLE budget_goals ADD COLUMN monthly_limit_cents INTEGER"))
-            if "monthly_limit" in column_names:
-                conn.execute(
-                    text("UPDATE budget_goals SET monthly_limit_cents = CAST(ROUND(monthly_limit * 100) AS INTEGER)")
-                )
-            conn.commit()
-        if "monthly_limit" in column_names:
-            try:
-                conn.execute(text("ALTER TABLE budget_goals DROP COLUMN monthly_limit"))
-                conn.commit()
-            except OperationalError:
-                pass
+    stamp(revision=BASELINE_REVISION)
 
 
 def _ensure_investment_withdraw_category():
