@@ -70,6 +70,36 @@ def _error(message, status_code=400):
     return jsonify({"error": message}), status_code
 
 
+MAX_PER_PAGE = 200
+
+
+def _list_response(query, serialize):
+    """Return a plain list unless the client opts into pagination via page/per_page."""
+    page_param = request.args.get("page")
+    per_page_param = request.args.get("per_page")
+    if page_param is None and per_page_param is None:
+        return jsonify([serialize(item) for item in query.all()])
+
+    try:
+        page = int(page_param) if page_param is not None else 1
+        per_page = int(per_page_param) if per_page_param is not None else 50
+    except ValueError:
+        return _error("page and per_page must be integers")
+    if page < 1 or not (1 <= per_page <= MAX_PER_PAGE):
+        return _error(f"page must be >= 1 and per_page must be between 1 and {MAX_PER_PAGE}")
+
+    pagination = query.paginate(page=page, per_page=per_page, max_per_page=MAX_PER_PAGE, error_out=False)
+    return jsonify(
+        {
+            "items": [serialize(item) for item in pagination.items],
+            "page": pagination.page,
+            "per_page": pagination.per_page,
+            "total": pagination.total,
+            "total_pages": pagination.pages,
+        }
+    )
+
+
 @api_bp.get("/health")
 @limiter.exempt
 def healthcheck():
@@ -78,8 +108,8 @@ def healthcheck():
 
 @api_bp.get("/categories")
 def list_categories():
-    categories = Category.query.order_by(Category.name.asc()).all()
-    return jsonify([category.to_dict() for category in categories])
+    query = Category.query.order_by(Category.name.asc())
+    return _list_response(query, Category.to_dict)
 
 
 @api_bp.post("/categories")
@@ -115,8 +145,7 @@ def list_transactions():
             query = _apply_month_filter(query, Transaction.occurred_on, month_token)
         except ValueError as err:
             return _error(str(err))
-    transactions = query.all()
-    return jsonify([transaction.to_dict() for transaction in transactions])
+    return _list_response(query, Transaction.to_dict)
 
 
 @api_bp.post("/transactions")
