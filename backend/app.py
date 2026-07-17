@@ -34,7 +34,17 @@ def create_app(test_config=None):
     with app.app_context():
         init_db()
 
-    CORS(app, resources={r"/api/*": {"origins": "*"}})
+    allowed_origins_env = os.environ.get("LUCIDFLOW_ALLOWED_ORIGINS", "").strip()
+    if allowed_origins_env:
+        allowed_origins = [origin.strip() for origin in allowed_origins_env.split(",") if origin.strip()]
+    else:
+        allowed_origins = "*"
+        app.logger.warning(
+            "LUCIDFLOW_ALLOWED_ORIGINS is not set; CORS is allowing all origins for /api/*. "
+            "Set LUCIDFLOW_ALLOWED_ORIGINS (comma-separated) before exposing this app beyond localhost."
+        )
+
+    CORS(app, resources={r"/api/*": {"origins": allowed_origins}})
     app.register_blueprint(api_bp, url_prefix="/api")
 
     @app.route("/")
