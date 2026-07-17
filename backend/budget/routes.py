@@ -2,6 +2,7 @@ import hmac
 from datetime import date, datetime
 from flask import Blueprint, current_app, jsonify, request
 from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 from collections import defaultdict
 from .database import db
 from .extensions import limiter
@@ -96,7 +97,11 @@ def create_category():
 
     category = Category(name=name, type=cat_type)
     db.session.add(category)
-    db.session.commit()
+    try:
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        return _error("Category already exists", 409)
     return category.to_dict(), 201
 
 
@@ -189,7 +194,11 @@ def create_goal():
 
     goal = BudgetGoal(category_id=category_id, monthly_limit=limit_value)
     db.session.add(goal)
-    db.session.commit()
+    try:
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        return _error("Goal already exists for this category", 409)
     return goal.to_dict(), 201
 
 
