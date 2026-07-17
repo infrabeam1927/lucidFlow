@@ -4,6 +4,7 @@ from flask import Blueprint, current_app, jsonify, request
 from sqlalchemy import func
 from collections import defaultdict
 from .database import db
+from .extensions import limiter
 from .models import BudgetGoal, Category, Transaction
 
 
@@ -68,6 +69,7 @@ def _error(message, status_code=400):
 
 
 @api_bp.get("/health")
+@limiter.exempt
 def healthcheck():
     return {"status": "ok", "timestamp": datetime.utcnow().isoformat()}
 
