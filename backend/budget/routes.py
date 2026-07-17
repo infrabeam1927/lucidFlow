@@ -136,6 +136,50 @@ def create_category():
     return category.to_dict(), 201
 
 
+@api_bp.put("/categories/<int:category_id>")
+def update_category(category_id: int):
+    category = db.session.get(Category, category_id)
+    if not category:
+        return _error("Category not found", 404)
+    payload = request.get_json() or {}
+
+    if "name" in payload:
+        name = (payload.get("name") or "").strip()
+        if not name:
+            return _error("Category name is required")
+        category.name = name
+
+    if "type" in payload:
+        cat_type = (payload.get("type") or "").lower()
+        if cat_type not in ALLOWED_CATEGORY_TYPES:
+            allowed = ", ".join(sorted(ALLOWED_CATEGORY_TYPES))
+            return _error(f"Category type must be one of: {allowed}")
+        if cat_type != "expense" and BudgetGoal.query.filter_by(category_id=category.id).first():
+            return _error("Cannot change type: category has an existing goal, which requires the expense type")
+        category.type = cat_type
+
+    try:
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        return _error("Category already exists", 409)
+    return category.to_dict()
+
+
+@api_bp.delete("/categories/<int:category_id>")
+def delete_category(category_id: int):
+    category = db.session.get(Category, category_id)
+    if not category:
+        return _error("Category not found", 404)
+    if Transaction.query.filter_by(category_id=category.id).first():
+        return _error("Cannot delete a category with existing transactions", 409)
+    if BudgetGoal.query.filter_by(category_id=category.id).first():
+        return _error("Cannot delete a category with an existing goal", 409)
+    db.session.delete(category)
+    db.session.commit()
+    return {"status": "deleted"}
+
+
 @api_bp.get("/transactions")
 def list_transactions():
     month_token = request.args.get("month")
@@ -185,6 +229,44 @@ def create_transaction():
     db.session.add(transaction)
     db.session.commit()
     return transaction.to_dict(), 201
+
+
+@api_bp.put("/transactions/<int:transaction_id>")
+def update_transaction(transaction_id: int):
+    transaction = db.session.get(Transaction, transaction_id)
+    if not transaction:
+        return _error("Transaction not found", 404)
+    payload = request.get_json() or {}
+
+    if "description" in payload:
+        description = (payload.get("description") or "").strip()
+        if not description:
+            return _error("Description is required")
+        transaction.description = description
+
+    if "amount" in payload:
+        try:
+            amount_value = float(payload.get("amount"))
+        except (TypeError, ValueError):
+            return _error("Amount must be a number")
+        if amount_value <= 0:
+            return _error("Amount must be positive")
+        transaction.amount_cents = dollars_to_cents(amount_value)
+
+    if "category_id" in payload:
+        category = db.session.get(Category, payload.get("category_id"))
+        if not category:
+            return _error("Category not found", 404)
+        transaction.category_id = category.id
+
+    if "occurred_on" in payload:
+        try:
+            transaction.occurred_on = datetime.strptime(payload.get("occurred_on"), "%Y-%m-%d").date()
+        except (TypeError, ValueError):
+            return _error("Dates must use YYYY-MM-DD format")
+
+    db.session.commit()
+    return transaction.to_dict()
 
 
 @api_bp.delete("/transactions/<int:transaction_id>")

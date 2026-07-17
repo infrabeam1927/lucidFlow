@@ -54,8 +54,8 @@ Then edit `API_BASE_URL` in `frontend/app.js` to point at your API host (default
 | Endpoint | Method(s) | Notes |
 | --- | --- | --- |
 | `/api/health` | GET | Basic heartbeat with timestamp |
-| `/api/categories` | GET, POST | Manage income, expense, investment, and withdrawal categories (unique names enforced) |
-| `/api/transactions` | GET, POST, DELETE | CRUD for transactions (positive amounts only) with optional `month=YYYY-MM` filter |
+| `/api/categories` | GET, POST, PUT, DELETE | Manage income, expense, investment, and withdrawal categories (unique names enforced). Deleting requires no existing transactions/goals reference it; changing `type` away from `expense` requires no existing goal. |
+| `/api/transactions` | GET, POST, PUT, DELETE | CRUD for transactions (positive amounts only) with optional `month=YYYY-MM` filter. `PUT` updates only the fields provided (description/amount/category_id/occurred_on). |
 | `/api/goals` | GET, POST, PUT, DELETE | Monthly limits attached to **expense** categories only |
 | `/api/summary` | GET | Aggregated totals (income/expense/net investment/withdrawal), inferred savings, category totals, and goal progress. Accepts `month=YYYY-MM`. |
 | `/api/sankey` | GET | Returns nodes/links for the Plotly Sankey diagram. Accepts `month=YYYY-MM`. |
