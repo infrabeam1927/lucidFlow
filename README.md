@@ -82,7 +82,7 @@ All responses are JSON. Errors return `{ "error": "message" }` plus an HTTP stat
   - **Shortfall → Income Pool** (if spending exceeds total income)
 
 ## Development Notes
-- Forms rely on `fetch` + JSON; no CSRF protection is included (add auth before deploying publicly).
+- Forms rely on `fetch` + JSON. There's no session/cookie-based auth for a cross-site request to ride along on, and every `POST`/`PUT` requires an `application/json` body — something a cross-site `<form>` or `no-cors` request cannot send — so classic CSRF doesn't apply to this API's design. Still set `LUCIDFLOW_API_KEY` and `LUCIDFLOW_ALLOWED_ORIGINS` before deploying publicly, since those control who can call the API at all.
 - The frontend is static: feel free to swap it into any hosting environment or migrate to a framework later.
 - `.gitignore` excludes the virtualenv, compiled Python files, `.env`, and the SQLite database (`backend/instance/`).
 

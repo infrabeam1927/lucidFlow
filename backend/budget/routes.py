@@ -8,20 +8,28 @@ from .models import BudgetGoal, Category, Transaction
 
 
 ALLOWED_CATEGORY_TYPES = {"income", "expense", "investment", "withdrawal"}
+JSON_BODY_METHODS = {"POST", "PUT"}
 
 api_bp = Blueprint("api", __name__)
 
 
 @api_bp.before_request
-def require_api_key():
+def guard_api_requests():
     if request.method == "OPTIONS" or request.endpoint == "api.healthcheck":
         return None
+
     configured_key = current_app.config.get("API_KEY")
-    if not configured_key:
-        return None
-    provided_key = request.headers.get("X-API-Key", "")
-    if not hmac.compare_digest(provided_key, configured_key):
-        return _error("Unauthorized", 401)
+    if configured_key:
+        provided_key = request.headers.get("X-API-Key", "")
+        if not hmac.compare_digest(provided_key, configured_key):
+            return _error("Unauthorized", 401)
+
+    # Cross-site <form>/no-cors requests can't set a JSON content type, so
+    # rejecting anything else here closes the classic CSRF vector even when
+    # no API key is configured.
+    if request.method in JSON_BODY_METHODS and not request.is_json:
+        return _error("Content-Type must be application/json", 415)
+
     return None
 
 
