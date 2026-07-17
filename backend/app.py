@@ -68,4 +68,10 @@ app = create_app()
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port, debug=True)
+    debug = os.environ.get("LUCIDFLOW_DEBUG", "").strip().lower() in ("1", "true", "yes")
+    if debug:
+        app.logger.warning(
+            "Running with LUCIDFLOW_DEBUG enabled: this exposes the Werkzeug interactive "
+            "debugger, which allows arbitrary code execution. Never use this outside local development."
+        )
+    app.run(host="0.0.0.0", port=port, debug=debug)
