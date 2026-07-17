@@ -4,12 +4,14 @@ from flask import Flask, abort, jsonify, request, send_from_directory
 from flask_cors import CORS
 from werkzeug.exceptions import HTTPException
 from budget.database import db, init_db
-from budget.extensions import limiter
+from budget.extensions import limiter, migrate
 from budget.routes import api_bp
 
 
-BASE_DIR = Path(__file__).resolve().parent.parent
+BACKEND_DIR = Path(__file__).resolve().parent
+BASE_DIR = BACKEND_DIR.parent
 FRONTEND_DIR = BASE_DIR / "frontend"
+MIGRATIONS_DIR = BACKEND_DIR / "migrations"
 
 
 def create_app(test_config=None):
@@ -35,6 +37,7 @@ def create_app(test_config=None):
         )
 
     db.init_app(app)
+    migrate.init_app(app, db, directory=str(MIGRATIONS_DIR))
     with app.app_context():
         init_db()
 

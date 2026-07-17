@@ -88,6 +88,7 @@ All responses are JSON. Errors return `{ "error": "message" }` plus an HTTP stat
 - Forms rely on `fetch` + JSON. There's no session/cookie-based auth for a cross-site request to ride along on, and every `POST`/`PUT` requires an `application/json` body — something a cross-site `<form>` or `no-cors` request cannot send — so classic CSRF doesn't apply to this API's design. Still set `LUCIDFLOW_API_KEY` and `LUCIDFLOW_ALLOWED_ORIGINS` before deploying publicly, since those control who can call the API at all.
 - The frontend is static: feel free to swap it into any hosting environment or migrate to a framework later.
 - `.gitignore` excludes the virtualenv, compiled Python files, `.env`, and the SQLite database (`backend/instance/`).
+- Schema changes are managed with [Flask-Migrate](https://flask-migrate.readthedocs.io/) (Alembic) under `backend/migrations/`. The app runs pending migrations automatically on startup — no manual step needed for normal use. When you change a model, generate a new revision from `backend/` with `FLASK_APP=app.py flask db migrate -m "description"`, review the generated file, then commit it alongside the model change.
 
 ## Roadmap Ideas
 1. Authentication / multi-user separation.
