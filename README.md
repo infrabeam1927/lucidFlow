@@ -47,7 +47,7 @@ If you prefer to run the dashboard separately (while Flask handles only the API)
 cd frontend
 python -m http.server 4173
 ```
-Then edit `API_BASE_URL` in `frontend/app.js` to point at your API host (default `http://localhost:5000/api`).
+By default the dashboard calls the API at its own origin (`window.location.origin + "/api"`), so no configuration is needed when Flask serves both — it works regardless of host/port. When running the frontend on its own (as above), set the "API base URL" field in the dashboard header to your API host (e.g. `http://localhost:5000/api`); it's saved in the browser's `localStorage` so you only need to set it once. Remember to add that origin (e.g. `http://localhost:4173`) to `LUCIDFLOW_ALLOWED_ORIGINS` on the API side.
 
 ## API Overview
 
