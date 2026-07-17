@@ -1,7 +1,8 @@
 import os
 from pathlib import Path
-from flask import Flask, abort, jsonify, send_from_directory
+from flask import Flask, abort, jsonify, request, send_from_directory
 from flask_cors import CORS
+from werkzeug.exceptions import HTTPException
 from budget.database import db, init_db
 from budget.extensions import limiter
 from budget.routes import api_bp
@@ -42,6 +43,19 @@ def create_app(test_config=None):
     @app.errorhandler(429)
     def rate_limit_exceeded(_error):
         return jsonify({"error": "Too many requests, please slow down"}), 429
+
+    @app.errorhandler(HTTPException)
+    def handle_api_http_exception(error):
+        if not request.path.startswith("/api/"):
+            return error
+        return jsonify({"error": error.description or error.name}), error.code
+
+    @app.errorhandler(Exception)
+    def handle_api_unexpected_exception(error):
+        if not request.path.startswith("/api/"):
+            raise error
+        app.logger.exception("Unhandled exception handling %s %s", request.method, request.path)
+        return jsonify({"error": "Internal server error"}), 500
 
     allowed_origins_env = os.environ.get("LUCIDFLOW_ALLOWED_ORIGINS", "").strip()
     if allowed_origins_env:
