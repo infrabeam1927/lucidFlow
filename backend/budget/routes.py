@@ -134,7 +134,7 @@ def create_transaction():
         return _error("Amount must be a number")
     if amount_value <= 0:
         return _error("Amount must be positive")
-    category = Category.query.get(category_id)
+    category = db.session.get(Category, category_id)
     if not category:
         return _error("Category not found", 404)
 
@@ -159,7 +159,7 @@ def create_transaction():
 
 @api_bp.delete("/transactions/<int:transaction_id>")
 def delete_transaction(transaction_id: int):
-    transaction = Transaction.query.get(transaction_id)
+    transaction = db.session.get(Transaction, transaction_id)
     if not transaction:
         return _error("Transaction not found", 404)
     db.session.delete(transaction)
@@ -178,7 +178,7 @@ def create_goal():
     payload = request.get_json() or {}
     category_id = payload.get("category_id")
     monthly_limit = payload.get("monthly_limit")
-    category = Category.query.get(category_id)
+    category = db.session.get(Category, category_id)
     if not category:
         return _error("Category not found", 404)
     if category.type != "expense":
@@ -204,7 +204,7 @@ def create_goal():
 
 @api_bp.put("/goals/<int:goal_id>")
 def update_goal(goal_id: int):
-    goal = BudgetGoal.query.get(goal_id)
+    goal = db.session.get(BudgetGoal, goal_id)
     if not goal:
         return _error("Goal not found", 404)
     payload = request.get_json() or {}
@@ -221,7 +221,7 @@ def update_goal(goal_id: int):
 
 @api_bp.delete("/goals/<int:goal_id>")
 def delete_goal(goal_id: int):
-    goal = BudgetGoal.query.get(goal_id)
+    goal = db.session.get(BudgetGoal, goal_id)
     if not goal:
         return _error("Goal not found", 404)
     db.session.delete(goal)
