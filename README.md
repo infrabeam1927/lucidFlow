@@ -62,6 +62,8 @@ Then edit `API_BASE_URL` in `frontend/app.js` to point at your API host (default
 
 All responses are JSON. Errors return `{ "error": "message" }` plus an HTTP status code (400/404/409, etc.).
 
+`GET /api/categories` and `GET /api/transactions` return a plain array by default. Pass `page` and/or `per_page` (max 200) to opt into pagination instead: the response becomes `{ "items": [...], "page", "per_page", "total", "total_pages" }`.
+
 ## Data Model
 
 | Table | Key Fields | Notes |
