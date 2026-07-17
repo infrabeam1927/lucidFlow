@@ -47,6 +47,9 @@ const currency = (value) =>
     maximumFractionDigits: 2,
   }).format(Number(value || 0));
 
+const HTML_ESCAPES = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
+const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => HTML_ESCAPES[char]);
+
 function resetForm(form) {
   if (!form) {
     return;
@@ -149,7 +152,8 @@ function populateCategorySelects() {
     return;
   }
 
-  const option = (category) => `<option value="${category.id}">${category.name} · ${category.type}</option>`;
+  const option = (category) =>
+    `<option value="${category.id}">${escapeHtml(category.name)} · ${escapeHtml(category.type)}</option>`;
   const transactionPlaceholder = '<option value="" disabled selected hidden>Select category</option>';
   transactionSelect.innerHTML = [transactionPlaceholder, ...state.categories.map(option)].join("\n");
   if (transactionSelect.options.length) {
@@ -187,10 +191,10 @@ function renderTransactions(list) {
       const sign = inflowTypes.has(transaction.type) ? "+" : "-";
       return `
         <tr data-id="${transaction.id}">
-          <td>${transaction.occurred_on}</td>
-          <td class="mono">${transaction.uid}</td>
-          <td>${transaction.description}</td>
-          <td>${transaction.category_name}</td>
+          <td>${escapeHtml(transaction.occurred_on)}</td>
+          <td class="mono">${escapeHtml(transaction.uid)}</td>
+          <td>${escapeHtml(transaction.description)}</td>
+          <td>${escapeHtml(transaction.category_name)}</td>
           <td>${sign}${currency(transaction.amount)}</td>
           <td><button class="danger" data-action="delete">Delete</button></td>
         </tr>
@@ -249,7 +253,7 @@ function renderBreakdown(breakdown) {
     return;
   }
   selectors.breakdown.innerHTML = entries
-    .map(([name, value]) => `<li>${name}: ${currency(value)}</li>`)
+    .map(([name, value]) => `<li>${escapeHtml(name)}: ${currency(value)}</li>`)
     .join("\n");
 }
 
@@ -265,7 +269,7 @@ function renderGoals(goalPayload) {
       return `
         <div class="goal-row">
           <div class="goal-meta">
-            <span>${goal.category_name}</span>
+            <span>${escapeHtml(goal.category_name)}</span>
             <span>${currency(spent)} / ${currency(goal.monthly_limit)}</span>
           </div>
           <div class="goal-track">
