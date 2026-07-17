@@ -7,7 +7,7 @@ from sqlalchemy.orm import joinedload
 from collections import defaultdict
 from .database import db
 from .extensions import limiter
-from .models import BudgetGoal, Category, Transaction
+from .models import BudgetGoal, Category, Transaction, dollars_to_cents
 
 
 ALLOWED_CATEGORY_TYPES = {"income", "expense", "investment", "withdrawal"}
@@ -178,7 +178,7 @@ def create_transaction():
 
     transaction = Transaction(
         description=description,
-        amount=amount_value,
+        amount_cents=dollars_to_cents(amount_value),
         occurred_on=occurred,
         category_id=category.id,
     )
@@ -222,7 +222,7 @@ def create_goal():
     if BudgetGoal.query.filter_by(category_id=category_id).first():
         return _error("Goal already exists for this category", 409)
 
-    goal = BudgetGoal(category_id=category_id, monthly_limit=limit_value)
+    goal = BudgetGoal(category_id=category_id, monthly_limit_cents=dollars_to_cents(limit_value))
     db.session.add(goal)
     try:
         db.session.commit()
@@ -244,7 +244,7 @@ def update_goal(goal_id: int):
         return _error("Monthly limit must be a number")
     if limit_value <= 0:
         return _error("Monthly limit must be positive")
-    goal.monthly_limit = limit_value
+    goal.monthly_limit_cents = dollars_to_cents(limit_value)
     db.session.commit()
     return goal.to_dict()
 
@@ -269,49 +269,48 @@ def monthly_summary():
         except ValueError as err:
             return _error(str(err))
 
-    totals = {"income": 0.0, "expense": 0.0, "investment": 0.0, "withdrawal": 0.0}
-    category_totals = {}
+    totals_cents = {"income": 0, "expense": 0, "investment": 0, "withdrawal": 0}
+    category_totals_cents = {}
 
     for transaction, category in query.all():
-        if category.type not in totals:
-            totals[category.type] = 0.0
-        totals[category.type] += transaction.amount
-        category_totals.setdefault(category.name, 0.0)
-        category_totals[category.name] += transaction.amount
+        totals_cents.setdefault(category.type, 0)
+        totals_cents[category.type] += transaction.amount_cents
+        category_totals_cents.setdefault(category.name, 0)
+        category_totals_cents[category.name] += transaction.amount_cents
 
-    income_total = totals.get("income", 0.0)
-    expense_total = totals.get("expense", 0.0)
-    investment_total = totals.get("investment", 0.0)
-    withdrawal_total = totals.get("withdrawal", 0.0)
-    net_investment = investment_total - withdrawal_total
-    totals["investment"] = net_investment
+    income_cents = totals_cents.get("income", 0)
+    expense_cents = totals_cents.get("expense", 0)
+    investment_cents = totals_cents.get("investment", 0)
+    withdrawal_cents = totals_cents.get("withdrawal", 0)
+    net_investment_cents = investment_cents - withdrawal_cents
+    totals_cents["investment"] = net_investment_cents
 
-    net = income_total - expense_total - net_investment
+    net_cents = income_cents - expense_cents - net_investment_cents
 
     # Progress for expense goals in the selected window (or lifetime if none)
-    def _goal_spent(goal: BudgetGoal):
-        goal_query = db.session.query(func.coalesce(func.sum(Transaction.amount), 0.0)).join(Category)
+    def _goal_spent_cents(goal: BudgetGoal):
+        goal_query = db.session.query(func.coalesce(func.sum(Transaction.amount_cents), 0)).join(Category)
         goal_query = goal_query.filter(Category.id == goal.category_id)
         if month_token:
             goal_query = _apply_month_filter(goal_query, Transaction.occurred_on, month_token)
-        return goal_query.scalar() or 0.0
+        return goal_query.scalar() or 0
 
     goal_payload = []
     for goal in BudgetGoal.query.all():
-        spent_value = _goal_spent(goal)
-        progress = spent_value / goal.monthly_limit if goal.monthly_limit else 0
+        spent_cents = _goal_spent_cents(goal)
+        progress = spent_cents / goal.monthly_limit_cents if goal.monthly_limit_cents else 0
         goal_payload.append(
             {
                 "goal": goal.to_dict(),
-                "spent": round(spent_value, 2),
+                "spent": round(spent_cents / 100, 2),
                 "progress": round(progress, 3),
             }
         )
 
     response = {
-        "totals": {k: round(v, 2) for k, v in totals.items()},
-        "net": round(net, 2),
-        "by_category": {name: round(value, 2) for name, value in category_totals.items()},
+        "totals": {k: round(v / 100, 2) for k, v in totals_cents.items()},
+        "net": round(net_cents / 100, 2),
+        "by_category": {name: round(value / 100, 2) for name, value in category_totals_cents.items()},
         "goals": goal_payload,
     }
     return jsonify(response)
@@ -331,7 +330,7 @@ def sankey_snapshot():
         db.session.query(
             Category.name.label("name"),
             Category.type.label("type"),
-            func.sum(Transaction.amount).label("total"),
+            func.sum(Transaction.amount_cents).label("total_cents"),
         )
         .join(Transaction)
         .group_by(Category.id)
@@ -347,10 +346,10 @@ def sankey_snapshot():
     if not category_totals:
         return jsonify({"nodes": [], "links": []})
 
-    income_rows = [row for row in category_totals if row.type == "income" and row.total]
-    withdrawal_rows = [row for row in category_totals if row.type == "withdrawal" and row.total]
-    expense_rows = [row for row in category_totals if row.type == "expense" and row.total]
-    investment_rows = [row for row in category_totals if row.type == "investment" and row.total]
+    income_rows = [row for row in category_totals if row.type == "income" and row.total_cents]
+    withdrawal_rows = [row for row in category_totals if row.type == "withdrawal" and row.total_cents]
+    expense_rows = [row for row in category_totals if row.type == "expense" and row.total_cents]
+    investment_rows = [row for row in category_totals if row.type == "investment" and row.total_cents]
 
     if not income_rows and not withdrawal_rows and not expense_rows and not investment_rows:
         return jsonify({"nodes": [], "links": []})
@@ -367,47 +366,48 @@ def sankey_snapshot():
     links = []
     income_pool_id = _node_id("Income Pool", "pool")
 
-    total_income = 0.0
+    total_income_cents = 0
     for row in income_rows:
         cat_id = _node_id(row.name, "income")
-        value = round(float(row.total or 0.0), 2)
-        if value <= 0:
+        cents = row.total_cents or 0
+        if cents <= 0:
             continue
-        total_income += value
-        links.append({"source": cat_id, "target": income_pool_id, "value": value})
+        total_income_cents += cents
+        links.append({"source": cat_id, "target": income_pool_id, "value": round(cents / 100, 2)})
 
-    total_withdrawal = 0.0
+    total_withdrawal_cents = 0
     for row in withdrawal_rows:
         cat_id = _node_id(row.name, "withdrawal")
-        value = round(float(row.total or 0.0), 2)
-        if value <= 0:
+        cents = row.total_cents or 0
+        if cents <= 0:
             continue
-        total_withdrawal += value
-        links.append({"source": cat_id, "target": income_pool_id, "value": value})
+        total_withdrawal_cents += cents
+        links.append({"source": cat_id, "target": income_pool_id, "value": round(cents / 100, 2)})
 
-    total_expense = 0.0
+    total_expense_cents = 0
     for row in expense_rows:
         cat_id = _node_id(row.name, "expense")
-        value = round(float(row.total or 0.0), 2)
-        if value <= 0:
+        cents = row.total_cents or 0
+        if cents <= 0:
             continue
-        total_expense += value
-        links.append({"source": income_pool_id, "target": cat_id, "value": value})
+        total_expense_cents += cents
+        links.append({"source": income_pool_id, "target": cat_id, "value": round(cents / 100, 2)})
 
-    total_investment = 0.0
+    total_investment_cents = 0
     for row in investment_rows:
         cat_id = _node_id(row.name, "investment")
-        value = round(float(row.total or 0.0), 2)
-        if value <= 0:
+        cents = row.total_cents or 0
+        if cents <= 0:
             continue
-        total_investment += value
-        links.append({"source": income_pool_id, "target": cat_id, "value": value})
+        total_investment_cents += cents
+        links.append({"source": income_pool_id, "target": cat_id, "value": round(cents / 100, 2)})
 
-    net = round(total_income + total_withdrawal - total_expense - total_investment, 2)
-    if net > 0:
+    net_cents = total_income_cents + total_withdrawal_cents - total_expense_cents - total_investment_cents
+    net = round(net_cents / 100, 2)
+    if net_cents > 0:
         savings_id = _node_id("Net Savings", "savings")
         links.append({"source": income_pool_id, "target": savings_id, "value": net})
-    elif net < 0:
+    elif net_cents < 0:
         gap_id = _node_id("Shortfall", "shortfall")
         links.append({"source": gap_id, "target": income_pool_id, "value": abs(net)})
 
@@ -420,28 +420,28 @@ def yearly_summary():
     if not rows:
         return jsonify([])
 
-    buckets = defaultdict(lambda: {"income": 0.0, "expense": 0.0, "investment": 0.0, "withdrawal": 0.0})
+    buckets = defaultdict(lambda: {"income": 0, "expense": 0, "investment": 0, "withdrawal": 0})
     for transaction, category in rows:
         bucket = buckets[_year_bucket(transaction.occurred_on)]
-        bucket.setdefault(category.type, 0.0)
-        bucket[category.type] += transaction.amount
+        bucket.setdefault(category.type, 0)
+        bucket[category.type] += transaction.amount_cents
 
     response = []
     for year in sorted(buckets.keys(), reverse=True):
         data = buckets[year]
-        income = data.get("income", 0.0)
-        withdrawal = data.get("withdrawal", 0.0)
-        expense = data.get("expense", 0.0)
-        investment_total = data.get("investment", 0.0)
-        investment_net = investment_total - withdrawal
-        net = income - expense - investment_net
+        income_cents = data.get("income", 0)
+        withdrawal_cents = data.get("withdrawal", 0)
+        expense_cents = data.get("expense", 0)
+        investment_cents = data.get("investment", 0)
+        investment_net_cents = investment_cents - withdrawal_cents
+        net_cents = income_cents - expense_cents - investment_net_cents
         response.append(
             {
                 "year": year,
-                "income": round(income, 2),
-                "expense": round(expense, 2),
-                "investment": round(investment_net, 2),
-                "net": round(net, 2),
+                "income": round(income_cents / 100, 2),
+                "expense": round(expense_cents / 100, 2),
+                "investment": round(investment_net_cents / 100, 2),
+                "net": round(net_cents / 100, 2),
             }
         )
 
