@@ -18,10 +18,17 @@ def create_app(test_config=None):
         SQLALCHEMY_DATABASE_URI=f"sqlite:///{default_db_path}",
         SQLALCHEMY_TRACK_MODIFICATIONS=False,
         JSON_SORT_KEYS=False,
+        API_KEY=os.environ.get("LUCIDFLOW_API_KEY", "").strip(),
     )
 
     if test_config:
         app.config.update(test_config)
+
+    if not app.config["API_KEY"]:
+        app.logger.warning(
+            "LUCIDFLOW_API_KEY is not set; the API is running without authentication. "
+            "Set LUCIDFLOW_API_KEY before exposing this app beyond localhost."
+        )
 
     db.init_app(app)
     with app.app_context():
