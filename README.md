@@ -39,6 +39,7 @@ Environment defaults:
 - Static assets: served from `../frontend` so you can simply open `http://localhost:5000/` after the server starts.
 - API authentication: set `LUCIDFLOW_API_KEY` to require an `X-API-Key` header on every `/api/*` request (except `/api/health`). If unset, the API runs without authentication — fine for local-only use, but set this before exposing the app beyond localhost. Enter the same value in the "API key" field in the dashboard header; it's stored in the browser's `localStorage` and sent on every request.
 - CORS: set `LUCIDFLOW_ALLOWED_ORIGINS` to a comma-separated list of allowed origins (e.g. `http://localhost:4173,https://mybudget.example.com`) for `/api/*`. If unset, all origins are allowed — convenient for local dev (including the standalone frontend server below), but set this before exposing the app beyond localhost.
+- Rate limiting: every `/api/*` request except `/api/health` is limited to `60 per minute` per client IP by default; override with `LUCIDFLOW_RATE_LIMIT` (e.g. `"30 per minute"`). Limits are tracked in-memory per process, so they reset on restart and aren't shared across multiple worker processes — fine for the single-process dev server this app ships with, but worth a shared store (e.g. Redis) if you run multiple workers in production.
 
 ### 2. Optional standalone frontend server
 If you prefer to run the dashboard separately (while Flask handles only the API):

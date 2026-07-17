@@ -1,8 +1,9 @@
 import os
 from pathlib import Path
-from flask import Flask, abort, send_from_directory
+from flask import Flask, abort, jsonify, send_from_directory
 from flask_cors import CORS
 from budget.database import db, init_db
+from budget.extensions import limiter
 from budget.routes import api_bp
 
 
@@ -19,6 +20,8 @@ def create_app(test_config=None):
         SQLALCHEMY_TRACK_MODIFICATIONS=False,
         JSON_SORT_KEYS=False,
         API_KEY=os.environ.get("LUCIDFLOW_API_KEY", "").strip(),
+        RATELIMIT_DEFAULT=os.environ.get("LUCIDFLOW_RATE_LIMIT", "60 per minute"),
+        RATELIMIT_STORAGE_URI="memory://",
     )
 
     if test_config:
@@ -33,6 +36,12 @@ def create_app(test_config=None):
     db.init_app(app)
     with app.app_context():
         init_db()
+
+    limiter.init_app(app)
+
+    @app.errorhandler(429)
+    def rate_limit_exceeded(_error):
+        return jsonify({"error": "Too many requests, please slow down"}), 429
 
     allowed_origins_env = os.environ.get("LUCIDFLOW_ALLOWED_ORIGINS", "").strip()
     if allowed_origins_env:
