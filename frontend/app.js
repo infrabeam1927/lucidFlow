@@ -1,8 +1,10 @@
 const API_BASE_URL = "http://localhost:5000/api";
+const API_KEY_STORAGE_KEY = "lucidflow_api_key";
 const state = {
   categories: [],
   months: [],
   month: null,
+  apiKey: localStorage.getItem(API_KEY_STORAGE_KEY) || "",
 };
 
 const selectors = {
@@ -27,6 +29,8 @@ const selectors = {
   sankeyPanel: document.getElementById("sankey-panel"),
   sankeyJump: document.getElementById("sankey-jump"),
   yearlyTable: document.getElementById("yearly-table"),
+  apiKeyInput: document.getElementById("api-key-input"),
+  apiKeySave: document.getElementById("api-key-save"),
 };
 
 const sankeyPalette = {
@@ -113,12 +117,18 @@ async function fetchMonths() {
 
 async function api(path, options = {}) {
   const config = {
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...(state.apiKey ? { "X-API-Key": state.apiKey } : {}),
+    },
     ...options,
   };
   const response = await fetch(`${API_BASE_URL}${path}`, config);
   if (!response.ok) {
     const errorPayload = await response.json().catch(() => ({ error: "Request failed" }));
+    if (response.status === 401) {
+      throw new Error("Unauthorized: check the API key above");
+    }
     const message = errorPayload.error || response.statusText;
     throw new Error(message);
   }
@@ -380,6 +390,19 @@ async function deleteTransaction(id) {
 }
 
 function attachEventListeners() {
+  if (selectors.apiKeySave && selectors.apiKeyInput) {
+    selectors.apiKeySave.addEventListener("click", () => {
+      state.apiKey = selectors.apiKeyInput.value.trim();
+      if (state.apiKey) {
+        localStorage.setItem(API_KEY_STORAGE_KEY, state.apiKey);
+      } else {
+        localStorage.removeItem(API_KEY_STORAGE_KEY);
+      }
+      showToast("API key saved");
+      fetchCategories().then(refreshData).catch((error) => showToast(error.message, "error"));
+    });
+  }
+
   selectors.monthPicker.addEventListener("change", (event) => {
     state.month = event.target.value || null;
     refreshData();
@@ -455,6 +478,9 @@ function refreshData() {
 }
 
 function init() {
+  if (selectors.apiKeyInput) {
+    selectors.apiKeyInput.value = state.apiKey;
+  }
   attachEventListeners();
   setupSankey();
   fetchCategories()

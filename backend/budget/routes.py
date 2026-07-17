@@ -1,5 +1,6 @@
+import hmac
 from datetime import date, datetime
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, current_app, jsonify, request
 from sqlalchemy import func
 from collections import defaultdict
 from .database import db
@@ -9,6 +10,19 @@ from .models import BudgetGoal, Category, Transaction
 ALLOWED_CATEGORY_TYPES = {"income", "expense", "investment", "withdrawal"}
 
 api_bp = Blueprint("api", __name__)
+
+
+@api_bp.before_request
+def require_api_key():
+    if request.method == "OPTIONS" or request.endpoint == "api.healthcheck":
+        return None
+    configured_key = current_app.config.get("API_KEY")
+    if not configured_key:
+        return None
+    provided_key = request.headers.get("X-API-Key", "")
+    if not hmac.compare_digest(provided_key, configured_key):
+        return _error("Unauthorized", 401)
+    return None
 
 
 def _parse_month_window(month_token: str):

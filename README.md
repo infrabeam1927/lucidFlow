@@ -36,6 +36,7 @@ Environment defaults:
 - Database path: `instance/budget.db` (created automatically)
 - Port: `5000` (override with `PORT` env var)
 - Static assets: served from `../frontend` so you can simply open `http://localhost:5000/` after the server starts.
+- API authentication: set `LUCIDFLOW_API_KEY` to require an `X-API-Key` header on every `/api/*` request (except `/api/health`). If unset, the API runs without authentication — fine for local-only use, but set this before exposing the app beyond localhost. Enter the same value in the "API key" field in the dashboard header; it's stored in the browser's `localStorage` and sent on every request.
 
 ### 2. Optional standalone frontend server
 If you prefer to run the dashboard separately (while Flask handles only the API):
