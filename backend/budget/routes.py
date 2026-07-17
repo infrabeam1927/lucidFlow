@@ -3,6 +3,7 @@ from datetime import date, datetime
 from flask import Blueprint, current_app, jsonify, request
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import joinedload
 from collections import defaultdict
 from .database import db
 from .extensions import limiter
@@ -108,7 +109,7 @@ def create_category():
 @api_bp.get("/transactions")
 def list_transactions():
     month_token = request.args.get("month")
-    query = Transaction.query.order_by(Transaction.occurred_on.desc())
+    query = Transaction.query.options(joinedload(Transaction.category)).order_by(Transaction.occurred_on.desc())
     if month_token:
         try:
             query = _apply_month_filter(query, Transaction.occurred_on, month_token)
