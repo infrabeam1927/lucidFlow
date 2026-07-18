@@ -70,6 +70,101 @@ function resetForm(form) {
       select.value = "";
     }
   });
+  clearFormErrors(form);
+}
+
+function setFieldError(input, message) {
+  clearFieldError(input);
+  input.classList.add("invalid");
+  const span = document.createElement("span");
+  span.className = "field-error";
+  span.textContent = message;
+  input.insertAdjacentElement("afterend", span);
+}
+
+function clearFieldError(input) {
+  input.classList.remove("invalid");
+  const next = input.nextElementSibling;
+  if (next && next.classList.contains("field-error")) {
+    next.remove();
+  }
+}
+
+function clearFormErrors(form) {
+  form.querySelectorAll(".field-error").forEach((el) => el.remove());
+  form.querySelectorAll(".invalid").forEach((el) => el.classList.remove("invalid"));
+}
+
+function attachClearOnInput(form, fieldNames) {
+  fieldNames.forEach((name) => {
+    const input = form.elements[name];
+    if (input) {
+      input.addEventListener("input", () => clearFieldError(input));
+      input.addEventListener("change", () => clearFieldError(input));
+    }
+  });
+}
+
+function parseAmountInput(value) {
+  if (value === "" || value === null) {
+    return { error: "Amount is required" };
+  }
+  const numeric = Number(value);
+  if (Number.isNaN(numeric)) {
+    return { error: "Amount must be a number" };
+  }
+  if (numeric <= 0) {
+    return { error: "Amount must be positive" };
+  }
+  return { value: numeric };
+}
+
+function validateTransactionForm(form) {
+  const errors = [];
+  const description = form.elements.description;
+  const amount = form.elements.amount;
+  const category = form.elements.category_id;
+
+  if (!description.value.trim()) {
+    errors.push([description, "Description is required"]);
+  }
+  const amountResult = parseAmountInput(amount.value);
+  if (amountResult.error) {
+    errors.push([amount, amountResult.error]);
+  }
+  if (!category.value) {
+    errors.push([category, "Select a category"]);
+  }
+  return errors;
+}
+
+function validateCategoryForm(form) {
+  const errors = [];
+  const name = form.elements.name;
+  const type = form.elements.type;
+
+  if (!name.value.trim()) {
+    errors.push([name, "Category name is required"]);
+  }
+  if (!type.value) {
+    errors.push([type, "Select a type"]);
+  }
+  return errors;
+}
+
+function validateGoalForm(form) {
+  const errors = [];
+  const category = form.elements.category_id;
+  const monthlyLimit = form.elements.monthly_limit;
+
+  if (!category.value) {
+    errors.push([category, "Select a category"]);
+  }
+  const limitResult = parseAmountInput(monthlyLimit.value);
+  if (limitResult.error) {
+    errors.push([monthlyLimit, limitResult.error.replace("Amount", "Monthly limit")]);
+  }
+  return errors;
 }
 
 function showToast(message, variant = "info") {
@@ -477,8 +572,19 @@ function attachEventListeners() {
     }
   });
 
+  attachClearOnInput(selectors.transactionForm, ["description", "amount", "category_id"]);
+  attachClearOnInput(selectors.categoryForm, ["name", "type"]);
+  attachClearOnInput(selectors.goalForm, ["category_id", "monthly_limit"]);
+
   selectors.transactionForm.addEventListener("submit", (event) => {
     event.preventDefault();
+    clearFormErrors(event.target);
+    const errors = validateTransactionForm(event.target);
+    if (errors.length) {
+      errors.forEach(([input, message]) => setFieldError(input, message));
+      errors[0][0].focus();
+      return;
+    }
     const formData = new FormData(event.target);
     const payload = Object.fromEntries(formData.entries());
     payload.amount = Number(payload.amount);
@@ -497,6 +603,13 @@ function attachEventListeners() {
 
   selectors.categoryForm.addEventListener("submit", (event) => {
     event.preventDefault();
+    clearFormErrors(event.target);
+    const errors = validateCategoryForm(event.target);
+    if (errors.length) {
+      errors.forEach(([input, message]) => setFieldError(input, message));
+      errors[0][0].focus();
+      return;
+    }
     const formData = new FormData(event.target);
     const payload = Object.fromEntries(formData.entries());
     api("/categories", { method: "POST", body: JSON.stringify(payload) })
@@ -510,6 +623,13 @@ function attachEventListeners() {
 
   selectors.goalForm.addEventListener("submit", (event) => {
     event.preventDefault();
+    clearFormErrors(event.target);
+    const errors = validateGoalForm(event.target);
+    if (errors.length) {
+      errors.forEach(([input, message]) => setFieldError(input, message));
+      errors[0][0].focus();
+      return;
+    }
     const formData = new FormData(event.target);
     const payload = Object.fromEntries(formData.entries());
     payload.category_id = Number(payload.category_id);
