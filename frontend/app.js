@@ -119,6 +119,17 @@ async function fetchMonths() {
   populateMonthDropdowns();
 }
 
+const activeRequests = {};
+
+function abortableSignal(kind) {
+  if (activeRequests[kind]) {
+    activeRequests[kind].abort();
+  }
+  const controller = new AbortController();
+  activeRequests[kind] = controller;
+  return controller.signal;
+}
+
 async function api(path, options = {}) {
   const config = {
     headers: {
@@ -186,7 +197,16 @@ function populateCategorySelects() {
 
 async function fetchTransactions() {
   const path = buildQuery("/transactions", { month: state.month });
-  const data = await api(path);
+  const signal = abortableSignal("transactions");
+  let data;
+  try {
+    data = await api(path, { signal });
+  } catch (error) {
+    if (error.name === "AbortError") {
+      return; // superseded by a newer request for this same data
+    }
+    throw error;
+  }
   renderTransactions(data);
 }
 
@@ -219,7 +239,16 @@ function renderTransactions(list) {
 
 async function fetchSummary() {
   const path = buildQuery("/summary", { month: state.month });
-  const summary = await api(path);
+  const signal = abortableSignal("summary");
+  let summary;
+  try {
+    summary = await api(path, { signal });
+  } catch (error) {
+    if (error.name === "AbortError") {
+      return; // superseded by a newer request for this same data
+    }
+    throw error;
+  }
   selectors.income.textContent = currency(summary.totals.income);
   selectors.expense.textContent = currency(summary.totals.expense);
   selectors.investment.textContent = currency(summary.totals.investment || 0);
@@ -360,15 +389,21 @@ async function buildSankey() {
   const label = month ? `Showing flows for ${month}` : "Showing flows for all history";
   button.disabled = true;
   status.textContent = "Building Sankey diagram...";
-  api(buildQuery("/sankey", { month }))
-    .then((payload) => renderSankeyDiagram(payload, label))
-    .catch((error) => {
-      showToast(error.message, "error");
-      status.textContent = "Unable to render chart. Please try again.";
-    })
-    .finally(() => {
-      button.disabled = false;
-    });
+  const signal = abortableSignal("sankey");
+  let payload;
+  try {
+    payload = await api(buildQuery("/sankey", { month }), { signal });
+  } catch (error) {
+    if (error.name === "AbortError") {
+      return; // superseded by a newer request; let that one own the button/status state
+    }
+    showToast(error.message, "error");
+    status.textContent = "Unable to render chart. Please try again.";
+    button.disabled = false;
+    return;
+  }
+  renderSankeyDiagram(payload, label);
+  button.disabled = false;
 }
 
 function setupSankey() {
