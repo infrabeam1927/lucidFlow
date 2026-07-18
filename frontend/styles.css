@@ -235,6 +235,17 @@ select {
   color: var(--text);
 }
 
+input.invalid,
+select.invalid {
+  box-shadow: 0 0 0 2px var(--danger);
+}
+
+.field-error {
+  color: var(--danger);
+  font-size: 0.8rem;
+  margin-top: -2px;
+}
+
 button {
   background: linear-gradient(120deg, var(--accent), var(--accent-muted));
   color: #03241f;
