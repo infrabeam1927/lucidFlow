@@ -4,18 +4,20 @@
 
 ## Feature Highlights
 - **Unified dashboard** with income, expenses, net investments, and inferred savings summary cards.
-- **Dynamic forms** for transactions, categories (income/expense/investment/withdrawal), and expense goals with automatic resets.
+- **Dynamic forms** for transactions, categories (income/expense/investment/withdrawal), and expense goals with automatic resets and inline client-side validation (bad input is caught before it ever reaches the server).
+- **Full CRUD** — categories can be renamed, retyped, and deleted (blocked while transactions/goals still reference them), and transactions can be edited in place, not just created and deleted.
 - **Goal tracking** that visualizes progress toward monthly caps for every expense category.
 - **Plotly-powered Sankey** diagram embedded on the main page showing how each income stream fans out to expenses, investments, and savings/shortfalls.
-- **Month filters** shared across summaries, tables, and the Sankey so you can focus on a single period.
+- **Month filters** shared across summaries, tables, and the Sankey so you can focus on a single period, with stale/superseded requests cancelled automatically so rapid filter changes never leave the UI showing outdated data.
 - **Built-in Investment Withdrawal category** (type `withdrawal`) so you can tag cash coming back from invested funds without extra setup.
+- **Opt-in security controls** — API key auth, a CORS origin allowlist, and per-IP rate limiting — all off by default for zero-config local dev, and easy to turn on with a few environment variables before deploying publicly (see Getting Started below).
 
 ## Tech Stack
 | Layer | Details |
 | --- | --- |
-| Backend | Flask 3, Flask-CORS, Flask-SQLAlchemy, SQLite (via SQLAlchemy) |
+| Backend | Flask 3, Flask-CORS, Flask-Limiter, Flask-Migrate (Alembic), Flask-SQLAlchemy, SQLite (via SQLAlchemy) |
 | Frontend | Plain HTML, CSS, and vanilla JS + Plotly CDN (no bundler needed) |
-| Data | SQLite database in `backend/instance/budget.db` (auto-created) |
+| Data | SQLite database in `backend/instance/budget.db` (auto-created and migrated on startup) |
 
 ## UI Preview
 ![LucidFlow dashboard preview](Screenshot%202026-02-25%20at%2012-33-26%20LucidFlow%20Budget.png)
@@ -69,8 +71,8 @@ All responses are JSON. Errors return `{ "error": "message" }` plus an HTTP stat
 | Table | Key Fields | Notes |
 | --- | --- | --- |
 | `categories` | `id`, `name`, `type` (`income`\|`expense`\|`investment`\|`withdrawal`) | Drives both transactions and goals |
-| `transactions` | `id`, `uid`, `description`, `amount`, `occurred_on`, `category_id` | Amounts must be positive; sign is inferred from category type. `uid` is a UUID exposed to clients. |
-| `budget_goals` | `id`, `monthly_limit`, `category_id` | One goal per expense category enforced by a uniqueness constraint |
+| `transactions` | `id`, `uid`, `description`, `amount_cents`, `occurred_on`, `category_id` | Amounts must be positive; sign is inferred from category type. `uid` is a UUID exposed to clients. Money is stored as integer cents internally to avoid floating-point rounding drift — the API still speaks plain decimal dollars (e.g. `12.34`) on the wire. |
+| `budget_goals` | `id`, `monthly_limit_cents`, `category_id` | One goal per expense category enforced by a uniqueness constraint. Same integer-cents storage as `transactions.amount_cents`. |
 
 ## Investments & Sankey Flow
 
@@ -91,10 +93,11 @@ All responses are JSON. Errors return `{ "error": "message" }` plus an HTTP stat
 - Schema changes are managed with [Flask-Migrate](https://flask-migrate.readthedocs.io/) (Alembic) under `backend/migrations/`. The app runs pending migrations automatically on startup — no manual step needed for normal use. When you change a model, generate a new revision from `backend/` with `FLASK_APP=app.py flask db migrate -m "description"`, review the generated file, then commit it alongside the model change.
 
 ## Roadmap Ideas
-1. Authentication / multi-user separation.
+1. True multi-user accounts. `LUCIDFLOW_API_KEY` covers single-user access control today, but there's no concept of separate users/logins yet.
 2. Better reporting exports (CSV/PDF) and additional charts.
 3. Automated tests (pytest for backend, Playwright/Cypress for the UI).
 4. Deployment scripts or containerization for reproducible environments.
+5. Split `frontend/app.js` into modules as it keeps growing — it's a single file today with no build step.
 
 ---
 
